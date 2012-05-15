@@ -10,3 +10,9 @@
 *.lai
 *.la
 *.a
+
+# QT Creator files
+z80_gui.pro.user
+
+# Z80 Binary files
+*.z80
