@@ -15,6 +15,8 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
 
     char ret = SUCCESS;
     uchar ucTmp;
+    uchar ucTmp2;
+    unsigned short usTmp;
     char  cTmp;
     unsigned int uiTmp;
 
@@ -189,38 +191,295 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
 
         break;
 
+        case 0x13:
+            // INC DE
+            // TODO: What happens if DE = 0xFFFF?
+            z->de++;
+            z->cycles += 6;
+        break;
 
+        case 0x14:
+            // INC D
+            // TODO: What happens if D = 0xFF?
+            z->d++;
+            z->cycles += 4;
+        break;
+
+        case 0x15:
+            // DEC D
+            // TODO: What happens if D = 0x00?
+            z->d--;
+            z->cycles += 4;
+        break;
+
+        case 0x16:
+            // LD D,n
+            z->d = z->m[z->pc++].data;
+            z->cycles += 7;
+        break;
+
+        case 0x17:
+            // RLA
+            z->f.h = 0;
+            z->f.n = 0;
+
+            ucTmp = z->c;
+            z->f.c = (z->a & 0x01) >> 7; // Carry is now msb of accumulator
+            z->a <<= 1;
+
+            // Old carry is now least significant bit of accumulator
+            if(ucTmp == 1)
+                z->a |= 0x01; // Set last bit
+            else
+                z->a &= 0xFE; // Reset last bit
+
+            z->cycles += 4;
+        break;
+
+        case 0x18:
+            // JR (PC+e)
+
+            cTmp = z->m[z->pc++].data;
+            z->pc = z->pc + cTmp; // Sum with 2's complement
+            z->cycles += 12;
+        break;
+
+        case 0x19:
+            // ADD HL, DE
+
+            uiTmp = z->hl + z->de;
+
+            if((uiTmp & 0x1000) == 1) {
+                z->f.c = 1;
+            } else {
+                z->f.c = 0;
+            }
+
+            uiTmp = (z->hl & 0x7FF) + (z->de & 0x7FF);
+
+            if((uiTmp & 0x800) == 1) {
+                z->f.h = 1;
+            } else {
+                z->f.h = 0;
+            }
+
+            z->f.n = 0;
+
+            z->cycles += 11;
+        break;
+
+        case 0x1A:
+            // LD A,(DE)
+            z->a = z->m[z->de].data;
+            z->cycles += 7;
+        break;
+
+        case 0x1B:
+            // DEC DE
+            // TODO: What happens if DE = 0x0000?
+            z->de--;
+            z->cycles += 6;
+        break;
+
+        case 0x1C:
+            // INC E
+            // TODO: What happens if E = 0xFF?
+            z->e++;
+            z->cycles += 4;
+        break;
+
+        case 0x1D:
+            // DEC E
+            // TODO: What happens if E = 0x00?
+            z->e--;
+            z->cycles += 4;
+        break;
+
+        case 0x1E:
+            // LD E,n
+            z->e = z->m[z->pc++].data;
+            z->cycles += 7;
+        break;
+
+        case 0x1F:
+            // RRA
+            z->f.h = 0;
+            z->f.n = 0;
+
+            ucTmp = z->c;
+            z->f.c = z->a & 0x01; // Carry is now lsb of accumulator
+            z->a >>= 1;
+
+            // Old carry is now least significant bit of accumulator
+            if(ucTmp == 1)
+                z->a |= 0x80; // Set msb
+            else
+                z->a &= 0x7F; // Reset msb
+
+            z->cycles += 4;
+        break;
+
+        case 0x20:
+            // JR NZ,(PC+e)
+
+            if(z->f.z == 0) {
+                cTmp = z->m[z->pc++].data;
+                z->pc = z->pc + cTmp;
+                z->cycles += 12;
+            } else {
+                z->pc++;
+                z->cycles += 7;
+            }
+
+        break;
+
+        case 0x21:
+            // LD HL,nn
+            z->l = z->m[z->pc++].data;
+            z->h = z->m[z->pc++].data;
+            z->cycles += 10;
+        break;
+
+        case 0x22:
+            // LD (nn), HL
+            // TODO: Improve this thing... It looks terrible
+            ucTmp  = z->m[z->pc++].data;   // Low  order byte
+            ucTmp2 = z->m[z->pc++].data;   // High order byte
+            usTmp = ucTmp2;
+            usTmp <<= 8;
+            usTmp |= ucTmp;
+
+            z->m[usTmp].data = z->hl;
+            z->cycles += 16;
+        break;
+
+        case 0x23:
+            // INC HL
+            // TODO: What happens when HL = 0x0FFFF?
+            z->hl++;
+            z->cycles += 6;
+        break;
+
+        case 0x24:
+            // INC H
+            // TODO: What happens when H = 0xFF?
+            z->h++;
+            z->cycles += 4;
+        break;
+
+        case 0x25:
+            // DEC H
+            // TODO: What happens when H = 0x00?
+            z->h--;
+            z->cycles += 4;
+        break;
+
+        case 0x26:
+            // LD H,n
+            z->h = z->m[z->pc++].data;
+            z->cycles += 7;
+        break;
+
+        case 0x27:
+            // DAA
+            // TODO: Implement me
+            printf("Opcode DAA: Implement me!");
+            z->cycles += 4;
+        break;
+
+        case 0x28:
+            // JR Z,(PC+e)
+            if(z->f.z == 1) {
+                cTmp = z->m[z->pc++].data;
+                z->pc = z->pc + cTmp;
+                z->cycles += 12;
+            } else {
+                z->pc++;
+                z->cycles += 7;
+            }
+        break;
+
+        case 0x29:
+            // ADD HL,HL
+            uiTmp = z->hl + z->hl;
+
+            if((uiTmp & 0x1000) == 1) {
+                z->f.c = 1;
+            } else {
+                z->f.c = 0;
+            }
+
+            uiTmp = (z->hl & 0x7FF) + (z->hl & 0x7FF);
+
+            if((uiTmp & 0x800) == 1) {
+                z->f.h = 1;
+            } else {
+                z->f.h = 0;
+            }
+
+            z->f.n = 0;
+
+            z->cycles += 11;
+        break;
+
+        case 0x2A:
+            // LD HL, (nn)
+            // TODO: Improve this thing... It looks terrible
+            ucTmp  = z->m[z->pc++].data;   // Low  order byte
+            ucTmp2 = z->m[z->pc++].data;   // High order byte
+            usTmp = ucTmp2;
+            usTmp <<= 8;
+            usTmp |= ucTmp;
+
+            z->hl = z->m[usTmp].data;
+            z->cycles += 16;
+        break;
+
+        case 0x2B:
+            // DEC HL
+            // TODO: What happens when HL = 0x0000?
+            z->hl--;
+            z->cycles += 6;
+        break;
+
+        case 0x2C:
+            // INC L
+            // TODO: What happens when L = 0xFF?
+            z->l++;
+            z->cycles += 4;
+        break;
+
+        case 0x2D:
+            // DEC L
+            // TODO: What happens when L = 0x00?
+            z->l--;
+            z->cycles += 4;
+        break;
+
+        case 0x2E:
+            // LD L, n
+            z->l = z->m[z->pc++].data;
+            z->cycles += 7;
+        break;
+
+        case 0x2F:
+            // CPL
+            z->a = ~z->a;
+            z->f.h = 1;
+            z->f.n = 1;
+
+            z->cycles += 4;
+        break;
+
+        /*
+        case 0x23:
+            //
+            z->cycles += 0;
+        break;
+        */
 
 
 /*
-13		INC DE			6	1	1
-14		INC D			4	1	1
-15		DEC D			4	1	1
-16 n		LD D,n			7	2	1
-17		RLA			4	1	1
-18 e		JR (PC+e)		12	3	1
-19		ADD HL,DE		11	3	1
-1A		LD A,(DE)		7	2	1
-1B		DEC DE			6	1	1
-1C		INC E			4	1	1
-1D		DEC E			4	1	1
-1E n		LD E,n			7	2	1
-1F		RRA			4	1	1
-20 e		JR NZ,(PC+e)		12/7	3/2	1/1	(met/not met)
-21 n n		LD HL,nn		10	3	1
-22 n n		LD (nn),HL		16	5	3
-23		INC HL			6	1	1
-24		INC H			4	1	1
-25		DEC H			4	1	1
-26 n		LD H,n			7	2	1
-27		DAA			4	1	1
-28 e		JR Z,(PC+e)		12/7	3/2	1/1	(met/not met)
-29		ADD HL,HL		11	3	1
-2A n n		LD HL,(nn)		16	5	1
-2B		DEC HL			6	1	1
-2C		INC L			4	1	1
-2D		DEC L			4	1	1
-2E n		LD L,n			7	2	1
 2F		CPL			4	1	1
 30 e		JR NC,(PC+e)		12/7	3/2	1/1	(met/not met)
 31 n n		LD SP,nn		10	3	1

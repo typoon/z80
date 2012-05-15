@@ -91,7 +91,7 @@ void MainWindow::runProgram()
         // Shwo the values in their places
         QString str;
         lnAccumulator->setText(str.sprintf("%02X", z->a));
-        lnFlags->setText(str.sprintf("%02X", z->f));
+        lnFlags->setText(str.sprintf("%02X", z->f.flags));
         lnB->setText(str.sprintf("%02X", z->b));
         lnC->setText(str.sprintf("%02X", z->c));
         lnD->setText(str.sprintf("%02X", z->d));
@@ -100,7 +100,7 @@ void MainWindow::runProgram()
         lnL->setText(str.sprintf("%02X", z->l));
 
         lnAccumulator2->setText(str.sprintf("%02X", z->a2));
-        lnFlags2->setText(str.sprintf("%02X", z->f2));
+        lnFlags2->setText(str.sprintf("%02X", z->f2.flags));
         lnB2->setText(str.sprintf("%02X", z->b2));
         lnC2->setText(str.sprintf("%02X", z->c2));
         lnD2->setText(str.sprintf("%02X", z->d2));
