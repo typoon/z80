@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "memory.h"
 #include "general.h"
@@ -11,6 +12,134 @@ uchar fetch_opcode(z80 *z) {
 
 }
 
+inline void set_flags_inc_8bits(z80 *z, uchar r) {
+
+    uchar old = r - 1;
+
+    if((r & 0x80) == 1) { // Negative number
+        z->f.s = 1;
+    } else {
+        z->f.s = 0;
+    }
+
+    if(r == 0) {
+        z->f.z = 1;
+    } else {
+        z->f.z = 0;
+    }
+
+    if(((old & 0x07) + (0x01)) > 0x07) { // Half Carry
+        z->f.h = 1;
+    } else {
+        z->f.h = 0;
+    }
+
+    if(old == 0x80) {
+        z->f.pv = 1;
+    } else {
+        z->f.pv = 0;
+    }
+
+    z->f.n = 1;
+
+}
+
+inline void set_flags_dec_8bits(z80 *z, uchar r) {
+
+    uchar old = r + 1;
+
+    if((r & 0x80) == 1) { // Negative number
+        z->f.s = 1;
+    } else {
+        z->f.s = 0;
+    }
+
+    if(r == 0) {
+        z->f.z = 1;
+    } else {
+        z->f.z = 0;
+    }
+
+
+    // TODO: Not sure... will there ever be a borrow from a dec?
+    z->f.h = 0;
+
+    if(old == 0x7F) {
+        z->f.pv = 1;
+    } else {
+        z->f.pv = 0;
+    }
+
+    z->f.n = 0;
+
+}
+
+inline void set_flags_add_16bits(z80 *z, unsigned short r1, unsigned short r2) {
+
+    unsigned int uiTmp = r1 + r2;
+
+    if((uiTmp & 0x1000) == 1) {
+        z->f.c = 1;
+    } else {
+        z->f.c = 0;
+    }
+
+    uiTmp = (r1 & 0x7FF) + (r2 & 0x7FF);
+
+    if((uiTmp & 0x800) == 1) {
+        z->f.h = 1;
+    } else {
+        z->f.h = 0;
+    }
+
+    z->f.n = 0;
+
+}
+
+/**
+  * Checks if any flags need to be setup for this sum and changes it.
+  * It should be called before the sum is made
+  */
+
+inline void set_flags_add_8bits(z80 *z, uchar r1, uchar r2) {
+
+    unsigned short usTmp = r1 + r2;
+
+    if(usTmp > 0x7F) {
+        z->f.s = 1;
+    } else {
+        z->f.s = 0;
+    }
+
+    if((usTmp & 0x00FF) == 0) {
+        z->f.z = 1;
+    } else {
+        z->f.z = 0;
+    }
+
+    if(((r1 & 0x07) + (r2 & 0x07)) > 0x07) { // Half Carry
+        z->f.h = 1;
+    } else {
+        z->f.h = 0;
+    }
+
+    if(usTmp > 0xFF) {
+        z->f.pv = 1;
+    } else {
+        z->f.pv = 0;
+    }
+
+    z->f.n = 0;
+
+    if(usTmp > 0xFF) {
+        z->f.c = 1;
+    } else {
+        z->f.c = 0;
+    }
+
+
+}
+
 char decode_exec_opcode(z80 *z, uchar opcode) {
 
     char ret = SUCCESS;
@@ -18,7 +147,6 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
     uchar ucTmp2;
     unsigned short usTmp;
     char  cTmp;
-    unsigned int uiTmp;
 
     switch(opcode) {
         case 0x00:
@@ -40,24 +168,27 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             z->cycles += 7;
         break;
 
-        case 0x03:
-            // INC BC
+        case 0x03: // INC BC
             // TODO: What happens if BC = 0xFFFF?
-            z->m[z->bc].data++;
+            z->bc++;
+
             z->cycles += 6;
         break;
 
         case 0x04:
             // INC B
             // TODO: What happens if B = 0xFF?
-            z->m[z->b].data++;
+            z->b++;
+            set_flags_inc_8bits(z, z->b);
+
             z->cycles += 4;
         break;
 
         case 0x05:
             // DEC B
             // TODO: What happens if B = 0x00?
-            z->m[z->b].data--;
+            z->b--;
+            set_flags_dec_8bits(z, z->b);
             z->cycles += 4;
         break;
 
@@ -92,25 +223,8 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
 
         case 0x09:
             // ADD HL, BC
-
-            uiTmp = z->hl + z->bc;
-
-            if((uiTmp & 0x1000) == 1) {
-                z->f.c = 1;
-            } else {
-                z->f.c = 0;
-            }
-
-            uiTmp = (z->hl & 0x7FF) + (z->bc & 0x7FF);
-
-            if((uiTmp & 0x800) == 1) {
-                z->f.h = 1;
-            } else {
-                z->f.h = 0;
-            }
-
-            z->f.n = 0;
-
+            z->hl = z->hl + z->bc;
+            set_flags_add_16bits(z, z->hl, z->bc);
 
             z->cycles += 11;
         break;
@@ -130,8 +244,8 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
 
         case 0x0C:
             // INC C
-            // TODO: What happens if C = 0xFF?
             z->c++;
+            set_flags_inc_8bits(z, z->c);
             z->cycles += 4;
         break;
 
@@ -139,6 +253,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // DEC C
             // TODO: What happens if C = 0x00?
             z->c--;
+            set_flags_dec_8bits(z, z->c);
             z->cycles += 4;
         break;
 
@@ -171,7 +286,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
                 z->pc = z->pc + cTmp; // Signed char for 2 complement's
                 z->cycles += 13;
             } else {
-                z->pc += 2;
+                z->pc++; // Skip the jump offset
                 z->cycles += 8;
             }
 
@@ -202,6 +317,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // INC D
             // TODO: What happens if D = 0xFF?
             z->d++;
+            set_flags_inc_8bits(z, z->d);
             z->cycles += 4;
         break;
 
@@ -209,6 +325,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // DEC D
             // TODO: What happens if D = 0x00?
             z->d--;
+            set_flags_dec_8bits(z, z->d);
             z->cycles += 4;
         break;
 
@@ -247,23 +364,8 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
         case 0x19:
             // ADD HL, DE
 
-            uiTmp = z->hl + z->de;
-
-            if((uiTmp & 0x1000) == 1) {
-                z->f.c = 1;
-            } else {
-                z->f.c = 0;
-            }
-
-            uiTmp = (z->hl & 0x7FF) + (z->de & 0x7FF);
-
-            if((uiTmp & 0x800) == 1) {
-                z->f.h = 1;
-            } else {
-                z->f.h = 0;
-            }
-
-            z->f.n = 0;
+            z->hl = z->hl + z->de;
+            set_flags_add_16bits(z, z->hl, z->de);
 
             z->cycles += 11;
         break;
@@ -285,6 +387,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // INC E
             // TODO: What happens if E = 0xFF?
             z->e++;
+            set_flags_inc_8bits(z, z->e);
             z->cycles += 4;
         break;
 
@@ -292,6 +395,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // DEC E
             // TODO: What happens if E = 0x00?
             z->e--;
+            set_flags_dec_8bits(z, z->e);
             z->cycles += 4;
         break;
 
@@ -364,6 +468,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // INC H
             // TODO: What happens when H = 0xFF?
             z->h++;
+            set_flags_inc_8bits(z, z->h);
             z->cycles += 4;
         break;
 
@@ -371,6 +476,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // DEC H
             // TODO: What happens when H = 0x00?
             z->h--;
+            set_flags_dec_8bits(z, z->h);
             z->cycles += 4;
         break;
 
@@ -401,37 +507,17 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
 
         case 0x29:
             // ADD HL,HL
-            uiTmp = z->hl + z->hl;
-
-            if((uiTmp & 0x1000) == 1) {
-                z->f.c = 1;
-            } else {
-                z->f.c = 0;
-            }
-
-            uiTmp = (z->hl & 0x7FF) + (z->hl & 0x7FF);
-
-            if((uiTmp & 0x800) == 1) {
-                z->f.h = 1;
-            } else {
-                z->f.h = 0;
-            }
-
-            z->f.n = 0;
+            z->hl = z->hl + z->hl;
+            set_flags_add_16bits(z, z->hl, z->hl);
 
             z->cycles += 11;
         break;
 
         case 0x2A:
             // LD HL, (nn)
-            // TODO: Improve this thing... It looks terrible
             ucTmp  = z->m[z->pc++].data;   // Low  order byte
-            ucTmp2 = z->m[z->pc++].data;   // High order byte
-            usTmp = ucTmp2;
-            usTmp <<= 8;
-            usTmp |= ucTmp;
+            z->hl = z->m[(z->m[z->pc++].data << 8) | ucTmp].data;
 
-            z->hl = z->m[usTmp].data;
             z->cycles += 16;
         break;
 
@@ -439,13 +525,16 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // DEC HL
             // TODO: What happens when HL = 0x0000?
             z->hl--;
+
             z->cycles += 6;
         break;
 
         case 0x2C:
             // INC L
             // TODO: What happens when L = 0xFF?
+            set_flags_inc_8bits(z, z->l);
             z->l++;
+
             z->cycles += 4;
         break;
 
@@ -453,12 +542,14 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             // DEC L
             // TODO: What happens when L = 0x00?
             z->l--;
+            set_flags_dec_8bits(z, z->l);
             z->cycles += 4;
         break;
 
         case 0x2E:
             // LD L, n
             z->l = z->m[z->pc++].data;
+
             z->cycles += 7;
         break;
 
@@ -471,6 +562,632 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
             z->cycles += 4;
         break;
 
+        case 0x30:
+            // JR NC, (PC+e)
+            if(z->f.c == 0) {
+                cTmp = z->m[z->pc++].data;
+                z->pc = z->pc + cTmp;
+                z->cycles += 12;
+            } else {
+                z->pc++;
+                z->cycles += 7;
+            }
+        break;
+
+        case 0x31:
+            // LD SP,nn
+            ucTmp = z->m[z->pc++].data; // low
+            z->sp = (z->m[z->pc++].data << 8) | ucTmp;
+
+            z->cycles += 10;
+        break;
+
+        case 0x32:
+            // LD (nn), A
+            ucTmp = z->m[z->pc++].data; // low
+            z->m[(z->m[z->pc++].data << 8) | ucTmp].data = z->a;
+
+            z->cycles += 13;
+        break;
+
+        case 0x33:
+            // INC SP
+            z->sp++;
+
+            z->cycles += 6;
+        break;
+
+        case 0x34:
+            // INC (HL)
+            z->m[z->hl].data++;
+
+            z->cycles += 11;
+        break;
+
+        case 0x35:
+            // DEC (HL)
+            z->m[z->hl].data--;
+
+            z->cycles += 11;
+        break;
+
+        case 0x36:
+            // LD (HL), n
+            z->m[z->hl].data = z->m[z->pc++].data;
+
+            z->cycles += 10;
+        break;
+
+        case 0x37:
+            // SCF
+            z->f.c = 1;
+            z->f.h = 0;
+            z->f.n = 0;
+            z->cycles += 4;
+        break;
+
+        case 0x38:
+            // JR C,(PC+e)
+            if(z->f.c == 1) {
+                cTmp = z->m[z->pc++].data;
+                z->pc = z->pc + cTmp;
+                z->cycles += 12;
+            } else {
+                z->pc++;
+                z->cycles += 7;
+            }
+        break;
+
+        case 0x39:
+            // ADD HL,SP
+            z->hl = z->hl + z->sp;
+            set_flags_add_16bits(z, z->hl, z->sp);
+
+            z->cycles += 11;
+        break;
+
+        case 0x3A:
+            // LD A,(nn)
+            ucTmp = z->m[z->pc++].data; // low
+            z->a = z->m[(z->m[z->pc++].data << 8) | ucTmp].data;
+
+            z->cycles += 13;
+        break;
+
+        case 0x3B:
+            // DEC SP
+            z->sp--;
+            z->cycles += 6;
+        break;
+
+        case 0x3C:
+            // INC A
+            z->a++;
+            set_flags_inc_8bits(z, z->a);
+
+            z->cycles += 4;
+        break;
+
+        case 0x3D:
+            // DEC A
+            z->a--;
+            set_flags_dec_8bits(z, z->a);
+
+            z->cycles += 0;
+        break;
+
+        case 0x3E:
+            // LD A,n
+            z->a = z->m[z->pc++].data;
+            z->cycles += 7;
+        break;
+
+        case 0x3F:
+            // CCF
+            z->f.h = z->f.c;
+            z->f.c = 0;
+            z->f.n = 0;
+            z->cycles += 4;
+        break;
+
+        case 0x40:
+            // LD B,B
+            z->b = z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x41:
+            // LD B,C
+            z->b = z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x42:
+            // LD B,D
+            z->b = z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x43:
+            // LD B,E
+            z->b = z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x44:
+            // LD B,H
+            z->b = z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x45:
+            // LD B,L
+            z->b = z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x46:
+            // LD B,(HL)
+            z->b = z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x47:
+            // LD B,A
+            z->b = z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x48:
+            // LD C,B
+            z->c = z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x49:
+            // LD C,C
+            z->c = z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x4A:
+            // LD C,D
+            z->c = z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x4B:
+            // LD C,E
+            z->c = z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x4C:
+            // LD C,H
+            z->c = z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x4D:
+            // LD C,L
+            z->c = z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x4E:
+            // LD C,(HL)
+            z->c = z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x4F:
+            // LD C,A
+            z->c = z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x50:
+            // LD D,B
+            z->d = z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x51:
+            // LD D,C
+            z->d = z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x52:
+            // LD D,D
+            z->d = z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x53:
+            // LD D,E
+            z->d = z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x54:
+            // LD D,H
+            z->d = z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x55:
+            // LD D,L
+            z->d = z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x56:
+            // LD D,(HL)
+            z->d = z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x57:
+            // LD D,A
+            z->d = z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x58:
+            // LD E,B
+            z->e = z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x59:
+            // LD E,C
+            z->e = z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x5A:
+            // LD E,D
+            z->e = z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x5B:
+            // LD E,E
+            z->e = z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x5C:
+            // LD E,H
+            z->e = z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x5D:
+            // LD E,L
+            z->e = z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x5E:
+            // LD E,(HL)
+            z->e = z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x5F:
+            // LD E,A
+            z->e = z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x60:
+            // LD H,B
+            z->h = z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x61:
+            // LD H,C
+            z->h = z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x62:
+            // LD H,D
+            z->h = z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x63:
+            // LD H,E
+            z->h = z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x64:
+            // LD H,H
+            z->h = z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x65:
+            // LD H,L
+            z->h = z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x66:
+            // LD H,(HL)
+            z->h = z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x67:
+            // LD H,A
+            z->h = z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x68:
+            // LD L,B
+            z->l = z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x69:
+            // LD L,C
+            z->l = z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x6A:
+            // LD L,D
+            z->l = z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x6B:
+            // LD L,E
+            z->l = z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x6C:
+            // LD L,H
+            z->l = z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x6D:
+            // LD L,L
+            z->l = z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x6E:
+            // LD L,(HL)
+            z->l = z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x6F:
+            // LD L,A
+            z->l = z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x70:
+            // LD (HL),B
+            z->m[z->hl].data = z->b;
+            z->cycles += 7;
+        break;
+
+        case 0x71:
+            // LD (HL),C
+            z->m[z->hl].data = z->c;
+            z->cycles += 7;
+        break;
+
+        case 0x72:
+            // LD (HL),D
+            z->m[z->hl].data = z->d;
+            z->cycles += 7;
+        break;
+
+        case 0x73:
+            // LD (HL),E
+            z->m[z->hl].data = z->e;
+            z->cycles += 7;
+        break;
+
+        case 0x74:
+            // LD (HL),H
+            z->m[z->hl].data = z->h;
+            z->cycles += 7;
+        break;
+
+        case 0x75:
+            // LD (HL),L
+            z->m[z->hl].data = z->l;
+            z->cycles += 7;
+        break;
+
+        case 0x76:
+            // HALT
+            // TODO: Confirm how this works
+            z->halt = 1;
+            z->cycles += 4;
+            z->pc--; // We repeat the halt until an interrupt happens
+        break;
+
+        case 0x77:
+            // LD (HL),A
+            z->m[z->hl].data = z->a;
+            z->cycles += 7;
+        break;
+
+        case 0x78:
+            // LD A,B
+            z->a = z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x79:
+            // LD A,C
+            z->a = z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x7A:
+            // LD A,D
+            z->a = z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x7B:
+            // LD A,E
+            z->a = z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x7C:
+            // LD A,H
+            z->a = z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x7D:
+            // LD A,B
+            z->a = z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x7E:
+            // LD A,(HL)
+            z->a = z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x7F:
+            // LD A,A
+            z->a = z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x80:
+            // ADD A,B
+            set_flags_add_8bits(z, z->a, z->b);
+            z->a += z->b;
+            z->cycles += 4;
+        break;
+
+        case 0x81:
+            // ADD A,C
+            set_flags_add_8bits(z, z->a, z->c);
+            z->a += z->c;
+            z->cycles += 4;
+        break;
+
+        case 0x82:
+            // ADD A,D
+            set_flags_add_8bits(z, z->a, z->d);
+            z->a += z->d;
+            z->cycles += 4;
+        break;
+
+        case 0x83:
+            // ADD A,E
+            set_flags_add_8bits(z, z->a, z->e);
+            z->a += z->e;
+            z->cycles += 4;
+        break;
+
+        case 0x84:
+            // ADD A,H
+            set_flags_add_8bits(z, z->a, z->h);
+            z->a += z->h;
+            z->cycles += 4;
+        break;
+
+        case 0x85:
+            // ADD A,L
+            set_flags_add_8bits(z, z->a, z->l);
+            z->a += z->l;
+            z->cycles += 4;
+        break;
+
+        case 0x86:
+            // ADD A,(HL)
+            set_flags_add_8bits(z, z->a, z->m[z->hl].data);
+            z->a += z->m[z->hl].data;
+            z->cycles += 7;
+        break;
+
+        case 0x87:
+            // ADD A,A
+            set_flags_add_8bits(z, z->a, z->a);
+            z->a += z->a;
+            z->cycles += 4;
+        break;
+
+        case 0x88:
+            // ADC A,B
+            set_flags_add_8bits(z, z->a, z->b + z->f.c);
+            z->a += z->b + z->f.c;
+            z->cycles += 4;
+        break;
+
+        case 0x89:
+            // ADC A,C
+            set_flags_add_8bits(z, z->a, z->c + z->f.c);
+            z->a += z->c + z->f.c;
+            z->cycles += 4;
+        break;
+
+        case 0x8A:
+            // ADC A,D
+            set_flags_add_8bits(z, z->a, z->d + z->f.c);
+            z->a += z->d + z->f.c;
+            z->cycles += 4;
+        break;
+
+        case 0x8B:
+            // ADC A,E
+            set_flags_add_8bits(z, z->a, z->e + z->f.c);
+            z->a += z->e + z->f.c;
+            z->cycles += 4;
+        break;
+
+        case 0x8C:
+            // ADC A,H
+            set_flags_add_8bits(z, z->a, z->h + z->f.c);
+            z->a += z->h + z->f.c;
+            z->cycles += 4;
+        break;
+
+        case 0x8D:
+            // ADC A,L
+            set_flags_add_8bits(z, z->a, z->l + z->f.c);
+            z->a += z->l + z->f.c;
+            z->cycles += 4;
+        break;
+
+        case 0x8E:
+            // ADC A,(HL)
+            set_flags_add_8bits(z, z->a, z->m[z->hl].data + z->f.c);
+            z->a += z->m[z->hl].data + z->f.c;
+            z->cycles += 7;
+        break;
+
+        case 0x8F:
+            // ADC A,A
+            set_flags_add_8bits(z, z->a, z->a + z->f.c);
+            z->a += z->a + z->f.c;
+            z->cycles += 4;
+        break;
+
         /*
         case 0x23:
             //
@@ -478,105 +1195,7 @@ char decode_exec_opcode(z80 *z, uchar opcode) {
         break;
         */
 
-
 /*
-2F		CPL			4	1	1
-30 e		JR NC,(PC+e)		12/7	3/2	1/1	(met/not met)
-31 n n		LD SP,nn		10	3	1
-32 n n		LD (nn),A		13	4	1
-33		INC SP			6	1	1
-34		INC (HL)		11	3	1
-35		DEC (HL)		11	3	1
-36 n		LD (HL),n		10	3	1
-37		SCF			4	1	1
-38 e		JR C,(PC+e)		12/7	3/2	1/1	(met/not met)
-39		ADD HL,SP		11	3	1
-3A n n		LD A,(nn)		13	4	1
-3B		DEC SP			6	1	1
-3C		INC A			4	1	1
-3D		DEC A			4	1	1
-3E n		LD A,n			7	2	1
-3F		CCF			4	1	1
-40		LD B,B			4	1	1
-41		LD B,C			4	1	1
-42		LD B,D			4	1	1
-43		LD B,E			4	1	1
-44		LD B,H			4	1	1
-45		LD B,L			4	1	1
-46		LD B,(HL)		7	2	1
-47		LD B,A			4	1	1
-48		LD C,B			4	1	1
-49		LD C,C			4	1	1
-4A		LD C,D			4	1	1
-4B		LD C,E			4	1	1
-4C		LD C,H			4	1	1
-4D		LD C,L			4	1	1
-4E		LD C,(HL)		7	2	1
-4F		LD C,A			4	1	1
-50		LD D,B			4	1	1
-51		LD D,C			4	1	1
-52		LD D,D			4	1	1
-53		LD D,E			4	1	1
-54		LD D,H			4	1	1
-55		LD D,L			4	1	1
-56		LD D,(HL)		7	2	1
-57		LD D,A			4	1	1
-58		LD E,B			4	1	1
-59		LD E,C			4	1	1
-5A		LD E,D			4	1	1
-5B		LD E,E			4	1	1
-5C		LD E,H			4	1	1
-5D		LD E,L			4	1	1
-5E		LD E,(HL)		7	2	1
-5F		LD E,A			4	1	1
-60		LD H,B			4	1	1
-61		LD H,C			4	1	1
-62		LD H,D			4	1	1
-63		LD H,E			4	1	1
-64		LD H,H			4	1	1
-65		LD H,L			4	1	1
-66		LD H,(HL)		7	2	1
-67		LD H,A			4	1	1
-68		LD L,B			4	1	1
-69		LD L,C			4	1	1
-6A		LD L,D			4	1	1
-6B		LD L,E			4	1	1
-6C		LD L,H			4	1	1
-6D		LD L,L			4	1	1
-6E		LD L,(HL)		7	2	1
-6F		LD L,A			4	1	1
-70		LD (HL),B		7	2	1
-71		LD (HL),C		7	2	1
-72		LD (HL),D		7	2	1
-73		LD (HL),E		7	2	1
-74		LD (HL),H		7	2	1
-75		LD (HL),L		7	2	1
-76		HALT			4	1	1	(repeated till next int)
-77		LD (HL),A		7	2	1
-78		LD A,B			4	1	1
-79		LD A,C			4	1	1
-7A		LD A,D			4	1	1
-7B		LD A,E			4	1	1
-7C		LD A,H			4	1	1
-7D		LD A,L			4	1	1
-7E		LD A,(HL)		7	2	1
-7F		LD A,A			4	1	1
-80		ADD A,B			4	1	1
-81		ADD A,C			4	1	1
-82		ADD A,D			4	1	1
-83		ADD A,E			4	1	1
-84		ADD A,H			4	1	1
-85		ADD A,L			4	1	1
-86		ADD A,(HL)		7	2	1
-87		ADD A,A			4	1	1
-88		ADC A,B			4	1	1
-89		ADC A,C			4	1	1
-8A		ADC A,D			4	1	1
-8B		ADC A,E			4	1	1
-8C		ADC A,H			4	1	1
-8D		ADC A,L			4	1	1
-8E		ADC A,(HL)		7	2	1
-8F		ADC A,A			4	1	1
 90		SUB B			4	1	1
 91		SUB C			4	1	1
 92		SUB D			4	1	1
@@ -637,6 +1256,13 @@ C8		RET Z			11/5	3/1	1/1	(met/not met)
 C9		RET			10	3	1
 */
 
+/*
+When a
+Load Register A with Register I (LD A, I) instruction or a Load
+Register A with Register R (LD A, R) instruction is executed, the state
+of IFF2 is copied to the parity flag where it can be tested or stored.
+*/
+
         default:
             ret = ERROR;
     }
@@ -658,6 +1284,12 @@ z80* new_z80(double freq) {
     z->fetch = fetch_opcode;
     z->decode_exec = decode_exec_opcode;
     z->halt = 0;
+
+    // Interrupts disabled when initialized
+    // Use instruct EI to enable it
+    z->iff1 = 0;
+    z->iff2 = 0;
+    z->im   = 0;
     
     return z;
 }

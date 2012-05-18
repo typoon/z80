@@ -8,10 +8,15 @@
 #include <QLineEdit>
 #include <QTime>
 
+
+#include <QThread>
+
+
 #include "mainwindow.h"
 #include "mylabel.h"
 #include "z80/z80.h"
 #include "z80/general.h"
+#include "executor.h"
 
 //#include "ui_mainwindow.h"
 
@@ -30,7 +35,26 @@ void MainWindow::exit()
     QCoreApplication::quit();
 }
 
-void MainWindow::runProgram()
+void MainWindow::runProgram() {
+    // This should be a separate thread, so I can unblock the GUI in order
+    // to send interrupts and stuff like that
+
+    //QFuture<void> future = QtConcurrent::run(SLOT(runProgramAsync()));
+     //QTimer::singleShot(0, this, SLOT(runProgramAsync()));
+    //QMetaObject::invokeMethod(this, "runProgramAsync");
+
+    QThread *t = new QThread();
+    Executor *exec = new Executor();
+
+    exec->moveToThread(t);
+    t->start();
+    qRegisterMetaType<MainWindow*>("MainWindow*");
+    QMetaObject::invokeMethod(exec, "execute",  Qt::QueuedConnection,
+                              Q_ARG(MainWindow*, this));
+
+}
+
+void MainWindow::runProgramAsync()
 {
 
     int i;
@@ -52,16 +76,17 @@ void MainWindow::runProgram()
     mem[0].data = 0x0E; // LD C, 0
     mem[1].data = 0x00; // LD C, 0
     mem[2].data = 0x06; // LD B, 0x10
-    mem[3].data = 0x10; // LD B, 0x10
+    mem[3].data = 0x02; // LD B, 0x10
     mem[4].data = 0x0C; // INC C
     mem[5].data = 0x10; // DJNZ -3
     mem[6].data = 0xFD; // DJNZ -3
+    mem[7].data = 0x76; // HALT
 
     for(;;) {
 
-        if(z->halt != 0) {
-            break;
-        }
+        //if(z->halt != 0) {
+        //    break;
+        //}
 
         if(get_time == 1) {
             start_time->restart();
@@ -87,6 +112,12 @@ void MainWindow::runProgram()
             z->cycles -= cycles_threshold;
             get_time = 1;
         }
+
+        // TODO: Check interrupts here?
+
+        // TODO: Check reset here?
+
+        //
 
         // Shwo the values in their places
         QString str;
@@ -122,7 +153,7 @@ void MainWindow::runProgram()
 
 void MainWindow::resetCPU()
 {
-    lnAccumulator->setText("funciona reset!");
+    cmpntCode->insertPlainText("funciona reset!");
 }
 
 void MainWindow::setupUi()
@@ -175,7 +206,6 @@ void MainWindow::setupUi()
     lnE2 = new QLineEdit();
     lnH2 = new QLineEdit();
     lnL2 = new QLineEdit();
-
 
     layoutReg->addRow(lblAccumulator, lnAccumulator);
     layoutReg->addRow(lblFlags, lnFlags);

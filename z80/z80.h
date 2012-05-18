@@ -129,6 +129,13 @@ typedef struct _z80 {
     
     short pc; // program counter
     short sp; // stack pointer
+
+    // Interrupt flip flops
+    char iff1;
+    char iff2;
+    char im;    // Interrupt mode. Setup by the IM instruction
+
+    // Weird stuff
     uchar i; // interrupt register
     uchar r; // refresh register
 

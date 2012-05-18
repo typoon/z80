@@ -6,6 +6,7 @@
 #include <QPlainTextEdit>
 #include <QGroupBox>
 #include <QLineEdit>
+#include <QCheckBox>
 
 namespace Ui {
 class MainWindow;
@@ -18,6 +19,7 @@ class MainWindow : public QMainWindow
 private slots:
     void exit();
     void runProgram();
+    void runProgramAsync();
     void resetCPU();
     
 public:
@@ -25,7 +27,7 @@ public:
     ~MainWindow();
     void setupUi();
 
-private:
+//private:
     QMenuBar* menuBar;
     QToolBar* toolBar;
     QGridLayout* layout;
@@ -50,7 +52,6 @@ private:
     QLineEdit* lnE2;
     QLineEdit* lnH2;
     QLineEdit* lnL2;
-
 
     // Toolbar items
     QAction* toolRun;

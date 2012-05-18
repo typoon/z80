@@ -13,11 +13,13 @@ TEMPLATE = app
 SOURCES += main.cpp\
     z80/z80.c \
     gui/mainwindow.cpp \
-    gui/mylabel.cpp
+    gui/mylabel.cpp \
+    gui/executor.cpp
 
 HEADERS  += z80/z80.h \
     gui/mainwindow.h \
     z80/memory.h \
     z80/general.h \
-    gui/mylabel.h
+    gui/mylabel.h \
+    gui/executor.h
 
